@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>페널티킥 게임 - 관중 배경 포함</title>
+<style>
+  body { margin:0; background:#0c2410; font-family:sans-serif; color:#fff; display:flex; flex-direction:column; align-items:center; }
+  h1{margin:10px 0;}
+  #game{
+    position:relative;
+    width:700px;
+    height:400px;
+    border:6px solid #fff;
+    border-radius:8px;
+    overflow:hidden;
+    cursor:pointer;
+    perspective:800px;
+    background: linear-gradient(to bottom, #3aa64c 0%, #266d25 60%), url('https://i.ibb.co/8B4T6zv/stadium-crowd.jpg') center/cover no-repeat;
+  }
+  .goal{position:absolute; top:40px; left:150px; width:400px; height:140px; border:8px solid #fff; border-bottom:none; border-radius:4px 4px 0 0; background-image:linear-gradient(90deg, rgba(255,255,255,0.35) 1px, transparent 1px), linear-gradient(rgba(255,255,255,0.35) 1px, transparent 1px); background-size:20px 20px; box-shadow: inset 0 0 10px rgba(255,255,255,0.3); transform: rotateX(5deg);}
+  .goal-line{position:absolute; top:180px; left:150px; width:400px; height:4px; background:#fff; border-radius:2px; box-shadow:0 0 3px #ff0000;}
+  .keeper{position:absolute; width:50px; height:80px; top:120px; left:330px; background:linear-gradient(to bottom, #ffdb4d 0%, #d4a017 100%); border-radius:10px; transition:0.25s; box-shadow:0 0 15px rgba(0,0,0,0.6); transform-style: preserve-3d;}
+  .keeper:after{content:""; position:absolute; top:-35px; left:5px; width:40px; height:40px; background:#ffdb4d; border-radius:50%; box-shadow:0 0 10px rgba(0,0,0,0.4);}
+  .ball{position:absolute; width:40px; height:40px; bottom:30px; left:330px; background:radial-gradient(circle, white 60%, black 61%, black 100%); border-radius:50%; box-shadow: inset -3px -3px 6px rgba(0,0,0,0.5), 0 5px 5px rgba(0,0,0,0.3); transform-origin:center;}
+  .targetIndicator{position:absolute; width:16px; height:16px; border-radius:50%; background:red; pointer-events:none; transform:translate(-50%, -50%);}
+  #scoreBox{margin-top:12px; font-size:20px;}
+  #gameOverModal{display:none; position:absolute; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.7); color:#fff; font-size:24px; display:flex; justify-content:center; align-items:center; flex-direction:column; z-index:10;}
+  #gameOverModal button{margin-top:20px; padding:10px 20px; font-size:18px; border:none; border-radius:6px; cursor:pointer;}
+  #shootBtn{margin-top:10px; padding:10px 20px; font-size:18px; cursor:pointer;}
+</style>
+</head>
+<body>
+<h1>⚽ 페널티킥 게임 - 관중 배경 포함</h1>
+<div id="game">
+  <div class="goal"></div>
+  <div class="goal-line" id="goalLine"></div>
+  <div class="keeper" id="keeper"></div>
+  <div class="ball" id="ball"></div>
+  <div class="targetIndicator" id="targetIndicator" style="display:none;"></div>
+  <div id="gameOverModal">
+    <div id="finalScore"></div>
+    <button onclick="retry()">다시하기</button>
+  </div>
+</div>
+<div id="scoreBox">점수: 0 | 남은 슛: 5</div>
+<button id="shootBtn">슛!</button>
+<p>슛 방향을 클릭하여 목표를 선택하세요!</p>
+<script>
+// 기존 JavaScript 코드 그대로 유지
+const game = document.getElementById("game");
+const keeper = document.getElementById("keeper");
+const ball = document.getElementById("ball");
+const scoreBox = document.getElementById("scoreBox");
+const modal = document.getElementById("gameOverModal");
+const finalScore = document.getElementById("finalScore");
+const shootBtn = document.getElementById("shootBtn");
+const targetIndicator = document.getElementById("targetIndicator");
+
+let score = 0;
+let shots = 5;
+let animating = false;
+let targetX = 350;
+let targetY = 150;
+const goal = { x:150, y:40, width:400, height:140 };
+
+game.addEventListener('click', (e)=>{
+  const rect = game.getBoundingClientRect();
+  targetX = e.clientX - rect.left - ball.offsetWidth/2;
+  targetY = e.clientY - rect.top - ball.offsetHeight/2;
+  targetIndicator.style.left = targetX + ball.offsetWidth/2 + 'px';
+  targetIndicator.style.top = targetY + ball.offsetHeight/2 + 'px';
+  targetIndicator.style.display = 'block';
+});
+
+function moveKeeperOnShot(targetX){
+  const randomOffset = Math.random()*200 - 100;
+  let newX = 330 + randomOffset;
+  newX = Math.max(150, Math.min(550, newX));
+  keeper.style.left = newX + 'px';
+}
+
+function isBallBlockedByKeeper(ballX, ballY){
+  const kx = keeper.offsetLeft + keeper.offsetWidth/2;
+  return Math.abs(ballX - kx) < 45 && ballY < goal.y + goal.height;
+}
+
+function isBallInGoal(ballX, ballY){
+  return ballX > goal.x && ballX < goal.x + goal.width && ballY > goal.y && ballY < goal.y + goal.height;
+}
+
+function kick(){
+  if(shots <=0 || animating) return;
+  animating = true;
+  moveKeeperOnShot(targetX);
+
+  const startSize = 40;
+  const endSize = 25;
+  ball.style.transition = "all 0.5s cubic-bezier(.42,0,.58,1)";
+  ball.style.left = targetX + "px";
+  ball.style.bottom = (game.clientHeight - targetY - ball.offsetHeight/2) + "px";
+  ball.style.width = endSize + "px";
+  ball.style.height = endSize + "px";
+
+  setTimeout(()=>{
+    const ballCenterX = ball.offsetLeft + ball.offsetWidth/2;
+    const ballCenterY = ball.offsetTop + ball.offsetHeight/2;
+    let isGoal = false;
+
+    if(isBallBlockedByKeeper(ballCenterX, ballCenterY)){
+      ball.style.transition = "0.4s ease";
+      ball.style.bottom = "60px";
+      setTimeout(()=>{ ball.style.bottom = "30px"; },400);
+    } else if(isBallInGoal(ballCenterX, ballCenterY)){
+      ball.style.transition = "0.5s ease";
+      ball.style.left = "330px";
+      ball.style.bottom = "260px";
+      isGoal = true;
+    } else {
+      ball.style.transition = "0.35s ease";
+      ball.style.bottom = "200px";
+      setTimeout(()=>{ ball.style.transition = "0.45s ease"; ball.style.bottom = "30px"; },300);
+    }
+
+    if(isGoal) score++;
+    shots--;
+    scoreBox.innerText = `점수: ${score} | 남은 슛: ${shots}`;
+
+    setTimeout(()=>{
+      reset();
+      animating = false;
+      if(shots === 0){
+        finalScore.innerText = `게임 종료! 최종 점수: ${score}`;
+        modal.style.display = "flex";
+      }
+    },800);
+  },500);
+}
+
+function reset(){
+  ball.style.transition = "0s";
+  ball.style.left = "330px";
+  ball.style.bottom = "30px";
+  ball.style.width = "40px";
+  ball.style.height = "40px";
+  keeper.style.left = "330px";
+  targetIndicator.style.display = 'none';
+}
+
+function retry(){
+  score = 0;
+  shots = 5;
+  scoreBox.innerText = `점수: ${score} | 남은 슛: ${shots}`;
+  modal.style.display = "none";
+  reset();
+  animating = false;
+}
+
+shootBtn.addEventListener("click", kick);
+</script>
+</body>
+</html>
